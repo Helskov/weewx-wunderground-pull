@@ -18,7 +18,7 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
 
     def genLoopPackets(self):
         while True:
-            # Fetch in US units ('e') to match your historical database
+
             url = f"https://api.weather.com/v2/pws/observations/current?stationId={self.station_id}&format=json&units=e&numericPrecision=decimal&apiKey={self.api_key}"
             
             try:
