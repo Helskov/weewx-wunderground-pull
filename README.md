@@ -6,11 +6,6 @@ This driver is ideal if your weather station uploads to Wunderground, but you wa
 
 Personal small project because my weatherstation only reports to wunderground or ProWeatherLive, and i could not intercept Wifi because of HTTPS communication. 
 
-## Features
-* **Lightweight:** No heavy dependencies (only requires `requests`).
-* **Unit Auto-Conversion:** Fetches data in US/Imperial units and relies on WeeWX's native `StdConvert` to automatically translate the data to your preferred target units (e.g., Metric) defined in your `weewx.conf`.
-* **Reliable:** Uses the official `v2/pws/observations/current` endpoint with decimal precision.
-* **Smart Home Ready:** Clean loop packets make it perfect for forwarding live data to Home Assistant using the WeeWX MQTT extension.
 
 ## Installation
 
