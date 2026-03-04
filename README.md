@@ -4,6 +4,8 @@ A lightweight, standalone driver for [WeeWX](https://weewx.com/) (v5 compatible)
 
 This driver is ideal if your weather station uploads to Wunderground, but you want to pull that data back locally into WeeWX to generate reports, store local archives, or push the data to smart home systems like Home Assistant via MQTT.
 
+Personal small project because my weatherstation only reports to wunderground or ProWeatherLive, and i could not intercept Wifi because of HTTPS communication. 
+
 ## Features
 * **Lightweight:** No heavy dependencies (only requires `requests`).
 * **Unit Auto-Conversion:** Fetches data in US/Imperial units and relies on WeeWX's native `StdConvert` to automatically translate the data to your preferred target units (e.g., Metric) defined in your `weewx.conf`.
