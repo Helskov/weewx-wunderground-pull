@@ -18,9 +18,9 @@ This driver is ideal if your weather station uploads to Wunderground, but you wa
 
 2. Download `wu_pull_driver.py` and place it in your WeeWX user directory:
 
-    sudo wget -O /etc/weewx/bin/user/wu_pull_driver.py https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/weewx-wunderground-pull/main/wu_pull_driver.py
+    sudo wget -O /etc/weewx/bin/user/wu_pull_driver.py https://raw.githubusercontent.com/Helskov/weewx-wunderground-pull/main/wu_pull_driver.py
 
-*(Note: Remember to replace YOUR_GITHUB_USERNAME in the URL with your actual GitHub username. Adjust the path if your WeeWX user directory is located elsewhere, e.g., `/home/weewx/bin/user/`)*
+Adjust the path if your WeeWX user directory is located elsewhere, e.g., `/home/weewx/bin/user/`)*
 
 ## Configuration
 
