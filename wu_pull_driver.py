@@ -2,6 +2,7 @@ import requests
 import time
 import logging
 import weewx.drivers
+import weewx
 
 log = logging.getLogger(__name__)
 DRIVER_NAME = 'WUPullCustom'
@@ -17,18 +18,17 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
 
     def genLoopPackets(self):
         while True:
-
+            # Fetch in US units ('e') to match your historical database
             url = f"https://api.weather.com/v2/pws/observations/current?stationId={self.station_id}&format=json&units=e&numericPrecision=decimal&apiKey={self.api_key}"
             
             try:
                 response = requests.get(url)
                 
                 if not response.text.strip():
-                     log.error("Wunderground API returned an empty response. Verify API key and station ID.")
+                     log.error("Wunderground API returned an empty response.")
                 else:
                     data = response.json()['observations'][0]
 
-                    # Map API data to WeeWX US units
                     packet = {
                         'dateTime': int(time.time() + 0.5),
                         'usUnits': weewx.US, 
@@ -45,16 +45,12 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                         'UV': data.get('uv'),
                     }
                     
-                    # Log success to verify data is flowing
-                    log.info(f"Successfully fetched data from Wunderground. Raw Temp (F): {packet['outTemp']}, Time: {packet['dateTime']}")
+                    log.info(f"Successfully fetched US data. Temp: {packet['outTemp']} F, Time: {packet['dateTime']}")
                     
                     yield packet
                     
             except Exception as e:
-                # Log error if API call fails
                 log.error(f"API fetch failed: {e}")
-                if 'response' in locals() and hasattr(response, 'text'):
-                    log.error(f"Wunderground API response: {response.text}")
 
             time.sleep(self.poll_interval)
 
