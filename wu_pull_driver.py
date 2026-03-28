@@ -39,8 +39,8 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                         'windGust': data['imperial']['windGust'],
                         'windDir': data['winddir'],
                         'dewpoint': data['imperial']['dewpt'],
-                        'rain': data['imperial']['precipRate'],
-                        'dayRain': data['imperial']['precipTotal'],
+                        'rain': data['imperial']['precipTotal'],
+                        'rainRate': data['imperial']['precipRate'],
                         'radiation': data.get('solarRadiation'),
                         'UV': data.get('uv'),
                     }
