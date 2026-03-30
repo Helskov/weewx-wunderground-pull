@@ -41,15 +41,18 @@ Since this driver generates loop packets based on API polls, WeeWX needs to calc
     record_generation = software
 ```
 
-**3. Configure Rain Handling (CRITICAL):**
-Wunderground provides rain as a daily cumulative total. To prevent WeeWX from incorrectly summing these totals every time the driver polls (causing "exploding" rain values), you **must** add an `[Accumulator]` section. This tells WeeWX to calculate only the difference between polls.
+**3. Units and Rain Handling (CRITICAL):**
 
-Add this block to your `weewx.conf` (check if `[Accumulator]` already exists, otherwise add it to the end of the file):
+The driver pulls data in US Customary units (Fahrenheit, Inches, mph) from the API. This is the recommended standard for the WeeWX database to ensure consistency.
+
+Rain: The driver calculates the rain delta internally. You should not use cumulative = True in your [Accumulator] section, as the driver already provides the incremental value.
+
+Metric Display: To display data in Metric (Celsius, mm, m/s) on your reports or via MQTT, configure your unit_system as follows:
+
+For Home Assistant/MQTT or Reports:
 ```ini
-[Accumulator]
-    [[rain]]
-        extractor = sum
-        cumulative = True
+[[MQTT]]
+    unit_system = METRICWX
 ```
 
 **4. Add the driver configuration:**
@@ -76,11 +79,10 @@ sudo journalctl -u weewx -f
 ```
 You should see a success message every 60 seconds (or your chosen `poll_interval`).
 
-### Incorrect Rain Values (Unit Mismatch)
-If rain values appear multiplied (e.g., 0.13 mm showing up as 3.3 mm), there is a unit mismatch between the API response and WeeWX. You can fix this by adding a correction in the `[StdCalibrate]` section:
+Calculated Values (Wind Chill, Dewpoint, etc.)
+If values like Wind Chill or Barometer are missing, ensure StdWXCalculate is enabled in your process_services. For WeeWX v5, use the following path:
 ```ini
-[StdCalibrate]
-    [[Corrections]]
-        # Corrects inches-to-mm double conversion if necessary
-        rain = rain / 25.4 if rain is not None else None
+[Engine]
+    [[Services]]
+        process_services = weewx.engine.StdConvert, weewx.engine.StdCalibrate, weewx.engine.StdQC, weewx.wxservices.StdWXCalculate
 ```
