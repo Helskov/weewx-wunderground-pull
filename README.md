@@ -45,8 +45,14 @@ Since this driver generates loop packets based on API polls, WeeWX needs to calc
 
 The driver pulls data in US Customary units (Fahrenheit, Inches, mph) from the API. This is the recommended standard for the WeeWX database to ensure consistency.
 
-Rain: The driver calculates the rain delta internally. You should not use cumulative = True in your [Accumulator] section, as the driver already provides the incremental value.
+WeeWX defaults to calculating the average for unknown data sources. Because this driver calculates and sends rain data as a "delta" (the amount of rain fallen since the last poll), you **must** instruct WeeWX to sum these values together. 
 
+Add the following block to your `weewx.conf` (ensure it is placed in the root of the file, not nested under another section):
+```ini
+[Accumulator]
+    [[rain]]
+        extractor = sum
+```
 Metric Display: To display data in Metric (Celsius, mm, m/s) on your reports or via MQTT, configure your unit_system as follows:
 
 For Home Assistant/MQTT or Reports:
@@ -63,7 +69,9 @@ Add this block at the very bottom of your `weewx.conf`:
     api_key = YOUR_API_KEY
     poll_interval = 60
     driver = user.wu_pull_driver
+    test_mode = False
 ```
+Note: When enabled, the driver injects a fake 0.01 in rain delta on every single poll. You should see your UI "Rain Today" increase steadily. Remember to set test_mode = False and restart WeeWX when you are done testing!
 
 **5. Restart WeeWX:**
 ```bash
