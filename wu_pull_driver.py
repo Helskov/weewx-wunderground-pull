@@ -15,52 +15,56 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
         self.station_id = stn_dict.get('station_id')
         self.api_key = stn_dict.get('api_key')
         self.poll_interval = float(stn_dict.get('poll_interval', 60))
-        # Memory state for rain calculation
-        self.last_rain = None
+        
+        # Test mode: set 'test_mode = True' in weewx.conf
+        self.test_mode = stn_dict.get('test_mode', 'False').lower() == 'true'
+        self.last_rain_total = None
+
+        log.info(f"Driver {DRIVER_NAME} loaded. Test mode: {self.test_mode}")
 
     def genLoopPackets(self):
         while True:
-            url = f"https://api.weather.com/v2/pws/observations/current?stationId={self.station_id}&format=json&units=e&numericPrecision=decimal&apiKey={self.api_key}"
+            url = (f"https://api.weather.com/v2/pws/observations/current?"
+                   f"stationId={self.station_id}&format=json&units=e&"
+                   f"numericPrecision=decimal&apiKey={self.api_key}")
             
             try:
                 response = requests.get(url)
-                if not response.text.strip():
-                     log.error("Wunderground API returned an empty response.")
-                else:
+                if response.status_code == 200:
                     data = response.json()['observations'][0]
+                    imperial = data['imperial']
                     
-                    # Calculate rain delta
-                    current_total = float(data['imperial']['precipTotal'])
+                    current_total = float(imperial['precipTotal'])
+                    rain_delta = 0.0
                     
-                    if self.last_rain is None:
-                        # First run after restart: set baseline, do not count existing rain
-                        self.last_rain = current_total
-                        rain_delta = 0.0
-                    else:
-                        rain_delta = current_total - self.last_rain
-                        # Handle midnight reset from Wunderground
-                        if rain_delta < 0:
+                    if self.test_mode:
+                        rain_delta = 0.01  # Force rain for testing
+                    elif self.last_rain_total is not None:
+                        if current_total >= self.last_rain_total:
+                            rain_delta = current_total - self.last_rain_total
+                        else:
+                            # Midnight reset handler
                             rain_delta = current_total
-                        
-                    self.last_rain = current_total
+                    
+                    self.last_rain_total = current_total
 
                     packet = {
                         'dateTime': int(time.time() + 0.5),
                         'usUnits': weewx.US, 
-                        'outTemp': data['imperial']['temp'],
+                        'outTemp': imperial['temp'],
                         'outHumidity': data['humidity'],
-                        'pressure': data['imperial']['pressure'],
-                        'windSpeed': data['imperial']['windSpeed'],
-                        'windGust': data['imperial']['windGust'],
+                        'pressure': imperial['pressure'],
+                        'windSpeed': imperial['windSpeed'],
+                        'windGust': imperial['windGust'],
                         'windDir': data['winddir'],
-                        'dewpoint': data['imperial']['dewpt'],
+                        'dewpoint': imperial['dewpt'],
                         'rain': rain_delta,
-                        'rainRate': data['imperial']['precipRate'],
+                        'rainRate': imperial['precipRate'],
                         'radiation': data.get('solarRadiation'),
                         'UV': data.get('uv'),
                     }
                     
-                    # Log all primary metrics in one compact line
+                    # Log all primary metrics
                     log.info(
                         f"Fetched data -> T: {packet['outTemp']}F, "
                         f"H: {packet['outHumidity']}%, "
@@ -68,13 +72,16 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                         f"W: {packet['windSpeed']}mph (Gust: {packet['windGust']}), "
                         f"R_Delta: {rain_delta}in, "
                         f"R_Total: {current_total}in, "
-                        f"UV: {packet['UV']}"
+                        f"UV: {packet['UV']}" +
+                        (" [TEST MODE ACTIVE]" if self.test_mode else "")
                     )
                     
                     yield packet
+                else:
+                    log.error(f"API error: {response.status_code}")
                     
             except Exception as e:
-                log.error(f"API fetch failed: {e}")
+                log.error(f"Driver error: {e}")
 
             time.sleep(self.poll_interval)
 
