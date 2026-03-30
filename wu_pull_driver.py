@@ -15,19 +15,34 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
         self.station_id = stn_dict.get('station_id')
         self.api_key = stn_dict.get('api_key')
         self.poll_interval = float(stn_dict.get('poll_interval', 60))
+        # Memory state for rain calculation
+        self.last_rain = None
 
     def genLoopPackets(self):
         while True:
-
             url = f"https://api.weather.com/v2/pws/observations/current?stationId={self.station_id}&format=json&units=e&numericPrecision=decimal&apiKey={self.api_key}"
             
             try:
                 response = requests.get(url)
-                
                 if not response.text.strip():
                      log.error("Wunderground API returned an empty response.")
                 else:
                     data = response.json()['observations'][0]
+                    
+                    # Calculate rain delta
+                    current_total = float(data['imperial']['precipTotal'])
+                    
+                    if self.last_rain is None:
+                        # First run after restart: set baseline, do not count existing rain
+                        self.last_rain = current_total
+                        rain_delta = 0.0
+                    else:
+                        rain_delta = current_total - self.last_rain
+                        # Handle midnight reset from Wunderground
+                        if rain_delta < 0:
+                            rain_delta = current_total
+                        
+                    self.last_rain = current_total
 
                     packet = {
                         'dateTime': int(time.time() + 0.5),
@@ -39,13 +54,22 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                         'windGust': data['imperial']['windGust'],
                         'windDir': data['winddir'],
                         'dewpoint': data['imperial']['dewpt'],
-                        'rain': data['imperial']['precipTotal'],
+                        'rain': rain_delta,
                         'rainRate': data['imperial']['precipRate'],
                         'radiation': data.get('solarRadiation'),
                         'UV': data.get('uv'),
                     }
                     
-                    log.info(f"Successfully fetched US data. Temp: {packet['outTemp']} F, Time: {packet['dateTime']}")
+                    # Log all primary metrics in one compact line
+                    log.info(
+                        f"Fetched data -> T: {packet['outTemp']}F, "
+                        f"H: {packet['outHumidity']}%, "
+                        f"P: {packet['pressure']}in, "
+                        f"W: {packet['windSpeed']}mph (Gust: {packet['windGust']}), "
+                        f"R_Delta: {rain_delta}in, "
+                        f"R_Total: {current_total}in, "
+                        f"UV: {packet['UV']}"
+                    )
                     
                     yield packet
                     
