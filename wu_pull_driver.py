@@ -15,71 +15,97 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
         self.station_id = stn_dict.get('station_id')
         self.api_key = stn_dict.get('api_key')
         self.poll_interval = float(stn_dict.get('poll_interval', 60))
-        
+
         # Test mode: set 'test_mode = True' in weewx.conf
         self.test_mode = stn_dict.get('test_mode', 'False').lower() == 'true'
         self.last_rain_total = None
+
+        # Memory for delta validation to filter out API spikes
+        self.last_valid_temp = None
+        self.last_valid_pres = None
 
         log.info(f"Driver {DRIVER_NAME} loaded. Test mode: {self.test_mode}")
 
     def genLoopPackets(self):
         while True:
+            # Explicitly request metric units to avoid WU unit-flapping
             url = (f"https://api.weather.com/v2/pws/observations/current?"
-                   f"stationId={self.station_id}&format=json&units=e&"
+                   f"stationId={self.station_id}&format=json&units=m&"
                    f"numericPrecision=decimal&apiKey={self.api_key}")
-            
+
             try:
                 response = requests.get(url)
                 if response.status_code == 200:
                     data = response.json()['observations'][0]
-                    imperial = data['imperial']
-                    
-                    current_total = float(imperial['precipTotal'])
+
+                    # Always read from the 'metric' block for consistency
+                    m = data['metric']
+
+                    temp_c = float(m['temp'])
+                    pres_hpa = float(m['pressure'])
+
+                    # --- DELTA VALIDATION START ---
+                    # Filter out impossible temperature jumps (e.g. > 6°C in 2 minutes)
+                    if self.last_valid_temp is not None:
+                        if abs(temp_c - self.last_valid_temp) > 6.0:
+                            log.warning(f"Rejected spike: Temp jumped from {self.last_valid_temp}C to {temp_c}C")
+                            time.sleep(self.poll_interval)
+                            continue
+
+                    # Filter out impossible pressure jumps (e.g. > 10 hPa in 2 minutes)
+                    if self.last_valid_pres is not None:
+                        if abs(pres_hpa - self.last_valid_pres) > 10.0:
+                            log.warning(f"Rejected spike: Pressure jumped from {self.last_valid_pres}hPa to {pres_hpa}hPa")
+                            time.sleep(self.poll_interval)
+                            continue
+
+                    # Update valid baseline only after passing checks
+                    self.last_valid_temp = temp_c
+                    self.last_valid_pres = pres_hpa
+                    # --- DELTA VALIDATION END ---
+
+                    # Rain logic
+                    current_total = float(m['precipTotal'])
                     rain_delta = 0.0
-                    
+
                     if self.test_mode:
-                        rain_delta = 0.01  # Force rain for testing
+                        rain_delta = 0.25
                     elif self.last_rain_total is not None:
                         if current_total >= self.last_rain_total:
                             rain_delta = current_total - self.last_rain_total
                         else:
-                            # Midnight reset handler
+                            # Midnight reset
                             rain_delta = current_total
-                    
+
                     self.last_rain_total = current_total
 
                     packet = {
                         'dateTime': int(time.time() + 0.5),
-                        'usUnits': weewx.US, 
-                        'outTemp': imperial['temp'],
+                        'usUnits': weewx.METRIC,
+                        'outTemp': temp_c,
                         'outHumidity': data['humidity'],
-                        'pressure': imperial['pressure'],
-                        'windSpeed': imperial['windSpeed'],
-                        'windGust': imperial['windGust'],
+                        'pressure': pres_hpa,
+                        'windSpeed': m['windSpeed'],
+                        'windGust': m['windGust'],
                         'windDir': data['winddir'],
-                        'dewpoint': imperial['dewpt'],
+                        'dewpoint': m['dewpt'],
                         'rain': rain_delta,
-                        'rainRate': imperial['precipRate'],
+                        'dayRain': current_total,
+                        'rainRate': m['precipRate'],
                         'radiation': data.get('solarRadiation'),
                         'UV': data.get('uv'),
                     }
-                    
-                    # Log all primary metrics
+
                     log.info(
-                        f"Fetched data -> T: {packet['outTemp']}F, "
-                        f"H: {packet['outHumidity']}%, "
-                        f"P: {packet['pressure']}in, "
-                        f"W: {packet['windSpeed']}mph (Gust: {packet['windGust']}), "
-                        f"R_Delta: {rain_delta}in, "
-                        f"R_Total: {current_total}in, "
-                        f"UV: {packet['UV']}" +
-                        (" [TEST MODE ACTIVE]" if self.test_mode else "")
+                        f"Loop: T={packet['outTemp']}C, P={packet['pressure']}hPa, "
+                        f"R_Delta={rain_delta}mm" +
+                        (" [TEST MODE]" if self.test_mode else "")
                     )
-                    
+
                     yield packet
                 else:
                     log.error(f"API error: {response.status_code}")
-                    
+
             except Exception as e:
                 log.error(f"Driver error: {e}")
 
@@ -88,3 +114,4 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
     @property
     def hardware_name(self):
         return DRIVER_NAME
+
