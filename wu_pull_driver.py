@@ -28,7 +28,9 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
 
     def genLoopPackets(self):
         while True:
-            # Explicitly request metric units to avoid WU unit-flapping
+            # Always request metric units from API.
+            # The driver will output data strictly in weewx.METRIC format.
+            # WeeWX automatically converts this to US units for American users.
             url = (f"https://api.weather.com/v2/pws/observations/current?"
                    f"stationId={self.station_id}&format=json&units=m&"
                    f"numericPrecision=decimal&apiKey={self.api_key}")
@@ -37,15 +39,13 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                 response = requests.get(url)
                 if response.status_code == 200:
                     data = response.json()['observations'][0]
-
-                    # Always read from the 'metric' block for consistency
                     m = data['metric']
 
                     temp_c = float(m['temp'])
                     pres_hpa = float(m['pressure'])
 
                     # --- DELTA VALIDATION START ---
-                    # Filter out impossible temperature jumps (e.g. > 6°C in 2 minutes)
+                    # Filter out impossible temperature jumps (e.g. > 6C in 2 minutes)
                     if self.last_valid_temp is not None:
                         if abs(temp_c - self.last_valid_temp) > 6.0:
                             log.warning(f"Rejected spike: Temp jumped from {self.last_valid_temp}C to {temp_c}C")
@@ -64,20 +64,26 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                     self.last_valid_pres = pres_hpa
                     # --- DELTA VALIDATION END ---
 
-                    # Rain logic
-                    current_total = float(m['precipTotal'])
-                    rain_delta = 0.0
+                    # Rain logic (WU API returns metric rain in mm)
+                    current_total_mm = float(m['precipTotal'])
+                    rain_delta_mm = 0.0
 
                     if self.test_mode:
-                        rain_delta = 0.25
+                        rain_delta_mm = 0.25
                     elif self.last_rain_total is not None:
-                        if current_total >= self.last_rain_total:
-                            rain_delta = current_total - self.last_rain_total
+                        if current_total_mm >= self.last_rain_total:
+                            rain_delta_mm = current_total_mm - self.last_rain_total
                         else:
                             # Midnight reset
-                            rain_delta = current_total
+                            rain_delta_mm = current_total_mm
 
-                    self.last_rain_total = current_total
+                    self.last_rain_total = current_total_mm
+
+                    # CRITICAL FIX: weewx.METRIC unit system expects rain in centimeters (cm)
+                    # We must divide the WU mm values by 10
+                    rain_delta_cm = rain_delta_mm / 10.0
+                    day_rain_cm = current_total_mm / 10.0
+                    rain_rate_cm = float(m['precipRate']) / 10.0
 
                     packet = {
                         'dateTime': int(time.time() + 0.5),
@@ -89,16 +95,16 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
                         'windGust': m['windGust'],
                         'windDir': data['winddir'],
                         'dewpoint': m['dewpt'],
-                        'rain': rain_delta,
-                        'dayRain': current_total,
-                        'rainRate': m['precipRate'],
+                        'rain': rain_delta_cm,
+                        'dayRain': day_rain_cm,
+                        'rainRate': rain_rate_cm,
                         'radiation': data.get('solarRadiation'),
                         'UV': data.get('uv'),
                     }
 
                     log.info(
                         f"Loop: T={packet['outTemp']}C, P={packet['pressure']}hPa, "
-                        f"R_Delta={rain_delta}mm" +
+                        f"R_Delta={rain_delta_mm}mm (Sent as {rain_delta_cm}cm)" +
                         (" [TEST MODE]" if self.test_mode else "")
                     )
 
@@ -114,4 +120,3 @@ class WUPullDriver(weewx.drivers.AbstractDevice):
     @property
     def hardware_name(self):
         return DRIVER_NAME
-
