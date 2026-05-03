@@ -41,11 +41,10 @@ Since this driver generates loop packets based on API polls, WeeWX needs to calc
     record_generation = software
 ```
 
-**3. Units and Rain Handling (CRITICAL):**
+**3. Rain Handling & Units (CRITICAL):**
 
-The driver pulls data in US Customary units (Fahrenheit, Inches, mph) from the API. This is the recommended standard for the WeeWX database to ensure consistency.
-
-WeeWX defaults to calculating the average for unknown data sources. Because this driver calculates and sends rain data as a "delta" (the amount of rain fallen since the last poll), you **must** instruct WeeWX to sum these values together. 
+**Rain Accumulation:**
+Because this driver calculates and sends rain data as a "delta" (the amount of rain fallen in the short interval since the last poll), you **must** instruct WeeWX to sum these values together, rather than averaging them.
 
 Add the following block to your `weewx.conf` (ensure it is placed in the root of the file, not nested under another section):
 ```ini
@@ -53,14 +52,6 @@ Add the following block to your `weewx.conf` (ensure it is placed in the root of
     [[rain]]
         extractor = sum
 ```
-Metric Display: To display data in Metric (Celsius, mm, m/s) on your reports or via MQTT, configure your unit_system as follows:
-
-For Home Assistant/MQTT or Reports:
-```ini
-[[MQTT]]
-    unit_system = METRICWX
-```
-
 **4. Add the driver configuration:**
 Add this block at the very bottom of your `weewx.conf`:
 ```ini
@@ -71,8 +62,13 @@ Add this block at the very bottom of your `weewx.conf`:
     driver = user.wu_pull_driver
     test_mode = False
 ```
-Note: When enabled, the driver injects a fake 0.01 in rain delta on every single poll. You should see your UI "Rain Today" increase steadily. Remember to set test_mode = False and restart WeeWX when you are done testing!
+Unit Systems (Plug-and-Play):
+The driver automatically requests data from the Wunderground API in Metric units (Celsius, hPa, mm) to avoid API conversion bugs. However, the driver is fully "Plug-and-Play" compatible with all WeeWX database standards.
 
+It explicitly tags the incoming data stream as weewx.METRIC. WeeWX's internal StdConvert engine will automatically read your database settings and convert the data into US Customary (Fahrenheit, inches) or METRICWX behind the scenes if needed. You do not need to change any database settings to accommodate this driver.
+```
+Note: When enabled, the driver injects a fake 0.01 in rain delta on every single poll. You should see your UI "Rain Today" increase steadily. Remember to set test_mode = False and restart WeeWX when you are done testing!
+```
 **5. Restart WeeWX:**
 ```bash
 sudo systemctl restart weewx
